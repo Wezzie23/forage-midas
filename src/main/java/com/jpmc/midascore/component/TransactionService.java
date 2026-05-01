@@ -12,30 +12,38 @@ public class TransactionService {
 
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
+    private final IncentiveService incentiveService;
 
-    public TransactionService(UserRepository userRepository, TransactionRepository transactionRepository) {
+    public TransactionService(UserRepository userRepository,
+                              TransactionRepository transactionRepository,
+                              IncentiveService incentiveService) {
         this.userRepository = userRepository;
         this.transactionRepository = transactionRepository;
+        this.incentiveService = incentiveService;
     }
 
     public void process(Transaction transaction) {
-        // 1. validate sender exists
+        // validate sender
         UserRecord sender = userRepository.findById(transaction.getSenderId());
         if (sender == null) return;
 
-        // 2. validate recipient exists
+        // validate recipient
         UserRecord recipient = userRepository.findById(transaction.getRecipientId());
         if (recipient == null) return;
 
-        // 3. validate sender has sufficient balance
+        // validate sufficient balance
         if (sender.getBalance() < transaction.getAmount()) return;
 
-        // 4. record the transaction
-        transactionRepository.save(new TransactionRecord(sender, recipient, transaction.getAmount()));
+        // get incentive from external API
+        float incentiveAmount = incentiveService.getIncentive(transaction);
 
-        // 5. update balances
+        // record transaction with incentive
+        transactionRepository.save(new TransactionRecord(sender, recipient, transaction.getAmount(), incentiveAmount));
+
+        // update balances — incentive added to recipient only, not deducted from sender
         sender.setBalance(sender.getBalance() - transaction.getAmount());
-        recipient.setBalance(recipient.getBalance() + transaction.getAmount());
+        recipient.setBalance(recipient.getBalance() + transaction.getAmount() + incentiveAmount);
+
         userRepository.save(sender);
         userRepository.save(recipient);
     }
